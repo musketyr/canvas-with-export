@@ -229,6 +229,16 @@
     .action-btn.secondary:hover { background: #1a4a7a; }
     .action-btn svg { width: 15px; height: 15px; pointer-events: none; }
 
+    /* Auto-save indicator */
+    .save-indicator {
+      font-size: 11px;
+      color: #4caf50;
+      opacity: 0;
+      transition: opacity .3s;
+      flex-shrink: 0;
+    }
+    .save-indicator.show { opacity: 1; }
+
     /* ── Canvas area ────────────────────────────────────────── */
     .canvas-wrapper {
       flex: 1;
@@ -243,7 +253,6 @@
       cursor: crosshair;
     }
 
-    /* Preview overlay for shapes */
     #previewCanvas {
       position: absolute;
       top: 0;
@@ -281,6 +290,9 @@
       z-index: 5;
       display: none;
     }
+
+    /* Hidden file input */
+    #imageUploadInput { display: none; }
 
     /* ── Responsive ─────────────────────────────────────────── */
     @media (max-width: 800px) {
@@ -355,7 +367,7 @@
 
   <div class="separator"></div>
 
-  <!-- Ruler & Eraser -->
+  <!-- Ruler, Bucket Fill & Eraser -->
   <div class="tool-group">
     <button class="tool-btn" data-tool="ruler" title="Ruler">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -367,6 +379,15 @@
         <path d="M17.5 7.5L16 9" transform="rotate(-45 12 7)"/>
       </svg>
       <span class="tooltip">Ruler (R)</span>
+    </button>
+    <button class="tool-btn" data-tool="bucket" title="Bucket Fill">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2.5 16.5l9-9 6 6-9 9z"/>
+        <path d="M5.5 13.5L11.5 7.5"/>
+        <path d="M15.5 16c1.5 1.5 3 3.5 3 5 0 1.1-.9 2-2 2s-2-.9-2-2c0-1.5 1.5-3.5 3-5z"/>
+        <path d="M7 2l3 3"/>
+      </svg>
+      <span class="tooltip">Bucket Fill (G)</span>
     </button>
     <button class="tool-btn" data-tool="eraser" title="Eraser">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -411,6 +432,12 @@
 
   <!-- Actions -->
   <div class="tool-group">
+    <button class="action-btn secondary" id="uploadBtn" title="Upload Image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      Upload
+    </button>
     <button class="action-btn secondary" id="clearBtn" title="Clear Canvas">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
@@ -429,8 +456,12 @@
       </svg>
       Export PNG
     </button>
+    <span class="save-indicator" id="saveIndicator">Saved</span>
   </div>
 </div>
+
+<!-- Hidden file input for image upload -->
+<input type="file" id="imageUploadInput" accept="image/*">
 
 <!-- ── Canvas ───────────────────────────────────────────────── -->
 <div class="canvas-wrapper" id="canvasWrapper">
@@ -465,6 +496,8 @@
   const rulerGuide = document.getElementById('rulerGuide');
   const rulerInfo = document.getElementById('rulerInfo');
   const eraserCursor = document.getElementById('eraserCursor');
+  const imageUploadInput = document.getElementById('imageUploadInput');
+  const saveIndicator = document.getElementById('saveIndicator');
 
   // ── State ───────────────────────────────────────────────
   let currentTool = 'pencil';
@@ -481,6 +514,9 @@
   let wheelHue = 0, wheelSat = 0, wheelBrightness = 100;
   let isDraggingWheel = false;
 
+  const STORAGE_KEY = 'drawingApp_canvas';
+  let autoSaveTimer = null;
+
   // ── Preset color palette ────────────────────────────────
   const PRESET_COLORS = [
     '#000000', '#434343', '#666666', '#999999', '#cccccc', '#ffffff',
@@ -495,9 +531,7 @@
       const el = document.createElement('div');
       el.className = 'preset-swatch';
       el.style.background = hex;
-      if (hex === '#ffffff') {
-        el.style.borderColor = '#555';
-      }
+      if (hex === '#ffffff') el.style.borderColor = '#555';
       el.addEventListener('click', () => {
         setColor(hex);
         highlightPresetSwatch(hex);
@@ -528,6 +562,7 @@
     'highlighter':    { size: 20, opacity: 0.3,  cap: 'square', compositeOp: 'source-over' },
     'felt-pen':       { size: 8,  opacity: 0.85, cap: 'round',  compositeOp: 'source-over' },
     'ruler':          { size: 3,  opacity: 1,    cap: 'round',  compositeOp: 'source-over' },
+    'bucket':         { size: 1,  opacity: 1,    cap: 'round',  compositeOp: 'source-over' },
     'eraser':         { size: 20, opacity: 1,    cap: 'round',  compositeOp: 'destination-out' },
     'shape-line':     { size: 3,  opacity: 1,    cap: 'round',  compositeOp: 'source-over' },
     'shape-rect':     { size: 3,  opacity: 1,    cap: 'round',  compositeOp: 'source-over' },
@@ -556,7 +591,39 @@
   }
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
-  saveState();
+
+  // ── Load saved drawing from localStorage ────────────────
+  function loadFromStorage() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const img = new Image();
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          saveState();
+        };
+        img.src = saved;
+        return;
+      }
+    } catch (e) { /* storage unavailable */ }
+    saveState();
+  }
+  loadFromStorage();
+
+  // ── Auto-save to localStorage (debounced) ───────────────
+  function scheduleAutoSave() {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, canvas.toDataURL('image/png'));
+        saveIndicator.classList.add('show');
+        setTimeout(() => saveIndicator.classList.remove('show'), 1200);
+      } catch (e) { /* quota exceeded or unavailable */ }
+    }, 500);
+  }
 
   // ── Tool selection ──────────────────────────────────────
   document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
@@ -576,7 +643,13 @@
       sizeValue.textContent = currentSize;
     }
 
-    canvas.style.cursor = tool === 'eraser' ? 'none' : 'crosshair';
+    if (tool === 'eraser') {
+      canvas.style.cursor = 'none';
+    } else if (tool === 'bucket') {
+      canvas.style.cursor = 'crosshair';
+    } else {
+      canvas.style.cursor = 'crosshair';
+    }
     eraserCursor.style.display = 'none';
   }
 
@@ -640,7 +713,6 @@
     wheelHue = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
     wheelSat = dist / r;
     updateColorFromWheel();
-    // position indicator
     let ix = x, iy = y;
     if (Math.sqrt((x-cx)**2 + (y-cy)**2) > r) {
       const s = r / Math.sqrt((x-cx)**2 + (y-cy)**2);
@@ -703,6 +775,83 @@
     }
   });
 
+  // ── Flood fill (bucket tool) ────────────────────────────
+  function floodFill(startX, startY, fillColor) {
+    const w = canvas.width, h = canvas.height;
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
+
+    const sx = Math.round(startX), sy = Math.round(startY);
+    if (sx < 0 || sx >= w || sy < 0 || sy >= h) return;
+
+    const startIdx = (sy * w + sx) * 4;
+    const sr = data[startIdx], sg = data[startIdx+1], sb = data[startIdx+2], sa = data[startIdx+3];
+
+    // Parse fill color
+    const fr = parseInt(fillColor.slice(1,3), 16);
+    const fg = parseInt(fillColor.slice(3,5), 16);
+    const fb = parseInt(fillColor.slice(5,7), 16);
+
+    // Don't fill if target is same as fill
+    if (sr === fr && sg === fg && sb === fb && sa === 255) return;
+
+    const tolerance = 32;
+
+    function matchesStart(i) {
+      return Math.abs(data[i] - sr) <= tolerance &&
+             Math.abs(data[i+1] - sg) <= tolerance &&
+             Math.abs(data[i+2] - sb) <= tolerance &&
+             Math.abs(data[i+3] - sa) <= tolerance;
+    }
+
+    // Scanline flood fill
+    const visited = new Uint8Array(w * h);
+    const stack = [[sx, sy]];
+
+    while (stack.length > 0) {
+      let [x, y] = stack.pop();
+
+      // Walk left
+      while (x > 0 && matchesStart(((y * w) + x - 1) * 4) && !visited[y * w + x - 1]) {
+        x--;
+      }
+
+      let spanUp = false, spanDown = false;
+
+      // Scan right
+      while (x < w && matchesStart((y * w + x) * 4) && !visited[y * w + x]) {
+        const idx = (y * w + x) * 4;
+        data[idx] = fr;
+        data[idx+1] = fg;
+        data[idx+2] = fb;
+        data[idx+3] = 255;
+        visited[y * w + x] = 1;
+
+        if (y > 0) {
+          const upIdx = ((y-1) * w + x) * 4;
+          if (matchesStart(upIdx) && !visited[(y-1) * w + x]) {
+            if (!spanUp) { stack.push([x, y-1]); spanUp = true; }
+          } else {
+            spanUp = false;
+          }
+        }
+
+        if (y < h - 1) {
+          const downIdx = ((y+1) * w + x) * 4;
+          if (matchesStart(downIdx) && !visited[(y+1) * w + x]) {
+            if (!spanDown) { stack.push([x, y+1]); spanDown = true; }
+          } else {
+            spanDown = false;
+          }
+        }
+
+        x++;
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  }
+
   // ── Drawing helpers ─────────────────────────────────────
   function getPos(e) {
     const rect = canvas.getBoundingClientRect();
@@ -737,9 +886,7 @@
       target.lineTo(x2, y2);
       target.stroke();
     } else if (tool === 'shape-rect') {
-      if (fill) {
-        target.fillRect(Math.min(x1,x2), Math.min(y1,y2), Math.abs(x2-x1), Math.abs(y2-y1));
-      }
+      if (fill) target.fillRect(Math.min(x1,x2), Math.min(y1,y2), Math.abs(x2-x1), Math.abs(y2-y1));
       target.strokeRect(Math.min(x1,x2), Math.min(y1,y2), Math.abs(x2-x1), Math.abs(y2-y1));
     } else if (tool === 'shape-circle') {
       const cx = (x1+x2)/2, cy = (y1+y2)/2;
@@ -766,6 +913,14 @@
   function startDraw(e) {
     e.preventDefault();
     const pos = getPos(e);
+
+    // Bucket fill: single-click action
+    if (currentTool === 'bucket') {
+      saveState();
+      floodFill(pos.x, pos.y, currentColor);
+      scheduleAutoSave();
+      return;
+    }
 
     if (shapeTool(currentTool)) {
       saveState();
@@ -848,6 +1003,7 @@
       drawShape(ctx, currentTool, shapeStart.x, shapeStart.y, pos.x, pos.y, fillToggle.checked);
       shapeStart = null;
       isDrawing = false;
+      scheduleAutoSave();
       return;
     }
 
@@ -866,6 +1022,7 @@
     }
 
     isDrawing = false;
+    scheduleAutoSave();
   }
 
   function updateRulerGuide(pos) {
@@ -909,6 +1066,7 @@
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
+      scheduleAutoSave();
     };
     img.src = prev;
   }
@@ -921,6 +1079,37 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    scheduleAutoSave();
+  });
+
+  // ── Image upload ────────────────────────────────────────
+  document.getElementById('uploadBtn').addEventListener('click', () => {
+    imageUploadInput.click();
+  });
+
+  imageUploadInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        saveState();
+        // Scale image to fit canvas while maintaining aspect ratio
+        const scale = Math.min(canvas.width / img.width, canvas.height / img.height, 1);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        const x = (canvas.width - w) / 2;
+        const y = (canvas.height - h) / 2;
+        ctx.drawImage(img, x, y, w, h);
+        scheduleAutoSave();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    // Reset so same file can be uploaded again
+    imageUploadInput.value = '';
   });
 
   // ── Export PNG ──────────────────────────────────────────
@@ -943,6 +1132,7 @@
     else if (key === 'o') selectTool('shape-circle');
     else if (key === 't') selectTool('shape-triangle');
     else if (key === 'r') selectTool('ruler');
+    else if (key === 'g') selectTool('bucket');
     else if (key === 'e') selectTool('eraser');
     else if (key === 'c') colorPopup.classList.toggle('open');
     else if (key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }

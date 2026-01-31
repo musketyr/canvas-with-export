@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drawing App</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ── Toolbar ────────────────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      flex-wrap: wrap;
+      z-index: 10;
+    }
+
+    .toolbar .separator {
+      width: 1px;
+      height: 32px;
+      background: #0f3460;
+    }
+
+    .tool-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tool-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      background: #1a1a2e;
+      color: #ccc;
+      cursor: pointer;
+      transition: all .15s;
+      position: relative;
+    }
+    .tool-btn:hover { background: #0f3460; color: #fff; }
+    .tool-btn.active { border-color: #e94560; color: #e94560; background: #1a1a2e; }
+    .tool-btn svg { width: 22px; height: 22px; pointer-events: none; }
+
+    .tool-btn .tooltip {
+      display: none;
+      position: absolute;
+      bottom: -30px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #000;
+      color: #fff;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      z-index: 100;
+    }
+    .tool-btn:hover .tooltip { display: block; }
+
+    /* Size slider */
+    .size-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .size-control label {
+      font-size: 12px;
+      color: #aaa;
+    }
+    .size-control input[type="range"] {
+      width: 90px;
+      accent-color: #e94560;
+    }
+    .size-value {
+      font-size: 12px;
+      color: #ccc;
+      min-width: 28px;
+      text-align: center;
+    }
+
+    /* Color picker area */
+    .color-picker-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .color-swatch {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 2px solid #555;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .color-swatch:hover { border-color: #e94560; }
+
+    .color-popup {
+      display: none;
+      position: absolute;
+      top: 50px;
+      left: 0;
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 12px;
+      padding: 16px;
+      z-index: 1000;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    }
+    .color-popup.open { display: block; }
+
+    .color-wheel-container {
+      position: relative;
+      width: 200px;
+      height: 200px;
+    }
+    .color-wheel-container canvas {
+      border-radius: 50%;
+      cursor: crosshair;
+    }
+    .color-wheel-indicator {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 3px rgba(0,0,0,.6);
+    }
+
+    .brightness-slider {
+      margin-top: 12px;
+      width: 100%;
+      accent-color: #e94560;
+    }
+
+    .color-preview-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .color-preview-large {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      border: 1px solid #555;
+    }
+    .color-hex-input {
+      background: #1a1a2e;
+      border: 1px solid #0f3460;
+      color: #eee;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      width: 90px;
+    }
+
+    /* Action buttons */
+    .action-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: none;
+      background: #e94560;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .action-btn:hover { background: #c73650; }
+    .action-btn.secondary {
+      background: #0f3460;
+    }
+    .action-btn.secondary:hover { background: #1a4a7a; }
+    .action-btn svg { width: 16px; height: 16px; pointer-events: none; }
+
+    /* ── Canvas area ────────────────────────────────────────── */
+    .canvas-wrapper {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #12121c;
+    }
+
+    #drawingCanvas {
+      display: block;
+      background: #ffffff;
+      cursor: crosshair;
+    }
+
+    /* Ruler guide line */
+    .ruler-guide {
+      position: absolute;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Ruler overlay: show angle/length */
+    .ruler-info {
+      position: absolute;
+      background: rgba(0,0,0,.7);
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 6;
+      white-space: nowrap;
+      display: none;
+    }
+
+    /* Eraser cursor */
+    .eraser-cursor {
+      position: absolute;
+      border: 2px solid #e94560;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 5;
+      display: none;
+    }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .toolbar { gap: 6px; padding: 8px 10px; }
+      .tool-btn { width: 34px; height: 34px; }
+      .size-control input[type="range"] { width: 60px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Toolbar ──────────────────────────────────────────────── -->
+<div class="toolbar">
+  <!-- Drawing tools -->
+  <div class="tool-group">
+    <button class="tool-btn active" data-tool="pencil" title="Pencil">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+        <path d="m15 5 4 4"/>
+      </svg>
+      <span class="tooltip">Pencil (B)</span>
+    </button>
+    <button class="tool-btn" data-tool="highlighter" title="Highlighter">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m9 11-6 6v3h9l3-3"/>
+        <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>
+      </svg>
+      <span class="tooltip">Highlighter (H)</span>
+    </button>
+    <button class="tool-btn" data-tool="felt-pen" title="Felt Pen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+        <path d="M2 2l7.586 7.586"/>
+        <circle cx="11" cy="11" r="2"/>
+      </svg>
+      <span class="tooltip">Felt Pen (F)</span>
+    </button>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Ruler -->
+  <div class="tool-group">
+    <button class="tool-btn" data-tool="ruler" title="Ruler">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 4h20v6H2z" transform="rotate(-45 12 7)"/>
+        <path d="M7.5 7.5L6 9" transform="rotate(-45 12 7)"/>
+        <path d="M10 7.5L8.5 9" transform="rotate(-45 12 7)"/>
+        <path d="M12.5 7.5L11 9" transform="rotate(-45 12 7)"/>
+        <path d="M15 7.5L13.5 9" transform="rotate(-45 12 7)"/>
+        <path d="M17.5 7.5L16 9" transform="rotate(-45 12 7)"/>
+      </svg>
+      <span class="tooltip">Ruler (R)</span>
+    </button>
+    <button class="tool-btn" data-tool="eraser" title="Eraser">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/>
+        <path d="M22 21H7"/>
+        <path d="m5 11 9 9"/>
+      </svg>
+      <span class="tooltip">Eraser (E)</span>
+    </button>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Size -->
+  <div class="size-control">
+    <label>Size</label>
+    <input type="range" id="sizeSlider" min="1" max="60" value="3">
+    <span class="size-value" id="sizeValue">3</span>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Color -->
+  <div class="color-picker-wrapper">
+    <div class="color-swatch" id="colorSwatch" style="background:#000000" title="Pick Color (C)"></div>
+    <div class="color-popup" id="colorPopup">
+      <div class="color-wheel-container">
+        <canvas id="colorWheel" width="200" height="200"></canvas>
+        <div class="color-wheel-indicator" id="wheelIndicator"></div>
+      </div>
+      <input type="range" class="brightness-slider" id="brightnessSlider" min="0" max="100" value="100">
+      <div class="color-preview-row">
+        <div class="color-preview-large" id="colorPreviewLarge" style="background:#000000"></div>
+        <input type="text" class="color-hex-input" id="hexInput" value="#000000" maxlength="7">
+      </div>
+    </div>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Actions -->
+  <div class="tool-group">
+    <button class="action-btn secondary" id="clearBtn" title="Clear Canvas">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+      </svg>
+      Clear
+    </button>
+    <button class="action-btn secondary" id="undoBtn" title="Undo (Ctrl+Z)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+      </svg>
+      Undo
+    </button>
+    <button class="action-btn" id="exportBtn" title="Export PNG">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Export PNG
+    </button>
+  </div>
+</div>
+
+<!-- ── Canvas ───────────────────────────────────────────────── -->
+<div class="canvas-wrapper" id="canvasWrapper">
+  <canvas id="drawingCanvas"></canvas>
+  <svg class="ruler-guide" id="rulerGuide" style="display:none"></svg>
+  <div class="ruler-info" id="rulerInfo"></div>
+  <div class="eraser-cursor" id="eraserCursor"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ── DOM refs ────────────────────────────────────────────
+  const canvas = document.getElementById('drawingCanvas');
+  const ctx = canvas.getContext('2d');
+  const wrapper = document.getElementById('canvasWrapper');
+  const sizeSlider = document.getElementById('sizeSlider');
+  const sizeValue = document.getElementById('sizeValue');
+  const colorSwatch = document.getElementById('colorSwatch');
+  const colorPopup = document.getElementById('colorPopup');
+  const colorWheel = document.getElementById('colorWheel');
+  const wheelCtx = colorWheel.getContext('2d');
+  const wheelIndicator = document.getElementById('wheelIndicator');
+  const brightnessSlider = document.getElementById('brightnessSlider');
+  const colorPreviewLarge = document.getElementById('colorPreviewLarge');
+  const hexInput = document.getElementById('hexInput');
+  const rulerGuide = document.getElementById('rulerGuide');
+  const rulerInfo = document.getElementById('rulerInfo');
+  const eraserCursor = document.getElementById('eraserCursor');
+
+  // ── State ───────────────────────────────────────────────
+  let currentTool = 'pencil';
+  let currentColor = '#000000';
+  let currentSize = 3;
+  let isDrawing = false;
+  let lastX = 0, lastY = 0;
+  let rulerStart = null;
+
+  // Undo history (store image data)
+  const undoStack = [];
+  const MAX_UNDO = 30;
+
+  // Color wheel state
+  let wheelHue = 0;
+  let wheelSat = 0;
+  let wheelBrightness = 100;
+  let isDraggingWheel = false;
+
+  // ── Tool config ─────────────────────────────────────────
+  const toolDefaults = {
+    'pencil':      { size: 3,  opacity: 1,   cap: 'round', compositeOp: 'source-over' },
+    'highlighter': { size: 20, opacity: 0.3, cap: 'square', compositeOp: 'source-over' },
+    'felt-pen':    { size: 8,  opacity: 0.85, cap: 'round', compositeOp: 'source-over' },
+    'ruler':       { size: 3,  opacity: 1,   cap: 'round', compositeOp: 'source-over' },
+    'eraser':      { size: 20, opacity: 1,   cap: 'round', compositeOp: 'destination-out' },
+  };
+
+  // ── Canvas sizing ───────────────────────────────────────
+  function resizeCanvas() {
+    const w = wrapper.clientWidth;
+    const h = wrapper.clientHeight;
+    // Save current image
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    canvas.width = w;
+    canvas.height = h;
+    // Fill white
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.putImageData(imgData, 0, 0);
+    // Update ruler guide size
+    rulerGuide.setAttribute('width', w);
+    rulerGuide.setAttribute('height', h);
+    rulerGuide.style.width = w + 'px';
+    rulerGuide.style.height = h + 'px';
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  saveState(); // initial blank state
+
+  // ── Tool selection ──────────────────────────────────────
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+    btn.addEventListener('click', () => selectTool(btn.dataset.tool));
+  });
+
+  function selectTool(tool) {
+    currentTool = tool;
+    document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector(`.tool-btn[data-tool="${tool}"]`);
+    if (btn) btn.classList.add('active');
+
+    const defaults = toolDefaults[tool];
+    if (defaults) {
+      currentSize = defaults.size;
+      sizeSlider.value = currentSize;
+      sizeValue.textContent = currentSize;
+    }
+
+    canvas.style.cursor = tool === 'eraser' ? 'none' : 'crosshair';
+    eraserCursor.style.display = 'none';
+  }
+
+  // ── Size slider ─────────────────────────────────────────
+  sizeSlider.addEventListener('input', () => {
+    currentSize = parseInt(sizeSlider.value, 10);
+    sizeValue.textContent = currentSize;
+  });
+
+  // ── Color wheel ─────────────────────────────────────────
+  function drawColorWheel() {
+    const cx = 100, cy = 100, r = 100;
+    const img = wheelCtx.createImageData(200, 200);
+    const data = img.data;
+    for (let y = 0; y < 200; y++) {
+      for (let x = 0; x < 200; x++) {
+        const dx = x - cx, dy = y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const idx = (y * 200 + x) * 4;
+        if (dist <= r) {
+          const angle = Math.atan2(dy, dx);
+          const hue = ((angle * 180 / Math.PI) + 360) % 360;
+          const sat = dist / r;
+          const rgb = hslToRgb(hue / 360, sat, wheelBrightness / 100 * 0.5 + 0.5 * (1 - sat * (1 - wheelBrightness / 100)));
+          data[idx] = rgb[0];
+          data[idx + 1] = rgb[1];
+          data[idx + 2] = rgb[2];
+          data[idx + 3] = 255;
+        } else {
+          data[idx + 3] = 0;
+        }
+      }
+    }
+    wheelCtx.putImageData(img, 0, 0);
+  }
+
+  function hslToRgb(h, s, l) {
+    let r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  }
+
+  function pickColorFromWheel(x, y) {
+    const cx = 100, cy = 100, r = 100;
+    const dx = x - cx, dy = y - cy;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > r) dist = r;
+    const angle = Math.atan2(dy, dx);
+    wheelHue = ((angle * 180 / Math.PI) + 360) % 360;
+    wheelSat = dist / r;
+    updateColorFromWheel();
+    positionWheelIndicator(x, y, cx, cy, r);
+  }
+
+  function positionWheelIndicator(x, y, cx, cy, r) {
+    const dx = x - cx, dy = y - cy;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > r) {
+      const scale = r / dist;
+      x = cx + dx * scale;
+      y = cy + dy * scale;
+    }
+    wheelIndicator.style.left = x + 'px';
+    wheelIndicator.style.top = y + 'px';
+  }
+
+  function updateColorFromWheel() {
+    const l = wheelBrightness / 100 * 0.5 + 0.5 * (1 - wheelSat * (1 - wheelBrightness / 100));
+    const rgb = hslToRgb(wheelHue / 360, wheelSat, l);
+    const hex = '#' + rgb.map(c => c.toString(16).padStart(2, '0')).join('');
+    setColor(hex);
+  }
+
+  function setColor(hex) {
+    currentColor = hex;
+    colorSwatch.style.background = hex;
+    colorPreviewLarge.style.background = hex;
+    hexInput.value = hex;
+  }
+
+  drawColorWheel();
+  // Default indicator position: center
+  wheelIndicator.style.left = '100px';
+  wheelIndicator.style.top = '100px';
+
+  // Wheel interactions
+  colorWheel.addEventListener('mousedown', (e) => {
+    isDraggingWheel = true;
+    const rect = colorWheel.getBoundingClientRect();
+    pickColorFromWheel(e.clientX - rect.left, e.clientY - rect.top);
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!isDraggingWheel) return;
+    const rect = colorWheel.getBoundingClientRect();
+    pickColorFromWheel(e.clientX - rect.left, e.clientY - rect.top);
+  });
+  window.addEventListener('mouseup', () => { isDraggingWheel = false; });
+
+  brightnessSlider.addEventListener('input', () => {
+    wheelBrightness = parseInt(brightnessSlider.value, 10);
+    drawColorWheel();
+    updateColorFromWheel();
+  });
+
+  hexInput.addEventListener('change', () => {
+    let v = hexInput.value.trim();
+    if (!v.startsWith('#')) v = '#' + v;
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+      setColor(v);
+    }
+  });
+
+  // Toggle popup
+  colorSwatch.addEventListener('click', (e) => {
+    e.stopPropagation();
+    colorPopup.classList.toggle('open');
+  });
+  document.addEventListener('click', (e) => {
+    if (!colorPopup.contains(e.target) && e.target !== colorSwatch) {
+      colorPopup.classList.remove('open');
+    }
+  });
+
+  // ── Drawing ─────────────────────────────────────────────
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    if (e.touches) {
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+    }
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function startDraw(e) {
+    e.preventDefault();
+    const pos = getPos(e);
+
+    if (currentTool === 'ruler') {
+      saveState();
+      rulerStart = { x: pos.x, y: pos.y };
+      isDrawing = true;
+      rulerGuide.style.display = 'block';
+      rulerInfo.style.display = 'block';
+      return;
+    }
+
+    isDrawing = true;
+    lastX = pos.x;
+    lastY = pos.y;
+    saveState();
+
+    // Draw a single dot
+    ctx.save();
+    applyToolStyle();
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, currentSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function draw(e) {
+    e.preventDefault();
+    const pos = getPos(e);
+
+    // Eraser cursor tracking
+    if (currentTool === 'eraser') {
+      eraserCursor.style.display = 'block';
+      eraserCursor.style.width = currentSize + 'px';
+      eraserCursor.style.height = currentSize + 'px';
+      const rect = canvas.getBoundingClientRect();
+      const cx = (e.touches ? e.touches[0].clientX : e.clientX) - currentSize / 2;
+      const cy = (e.touches ? e.touches[0].clientY : e.clientY) - currentSize / 2;
+      eraserCursor.style.left = (cx - rect.left + canvas.offsetLeft) + 'px';
+      eraserCursor.style.top = (cy - rect.top + canvas.offsetTop) + 'px';
+    }
+
+    if (!isDrawing) return;
+
+    if (currentTool === 'ruler') {
+      updateRulerGuide(pos);
+      return;
+    }
+
+    ctx.save();
+    applyToolStyle();
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    ctx.restore();
+
+    lastX = pos.x;
+    lastY = pos.y;
+  }
+
+  function endDraw(e) {
+    if (!isDrawing) return;
+
+    if (currentTool === 'ruler' && rulerStart) {
+      const pos = getPos(e);
+      // Draw the final line on canvas
+      ctx.save();
+      applyToolStyle();
+      ctx.beginPath();
+      ctx.moveTo(rulerStart.x, rulerStart.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      ctx.restore();
+      rulerStart = null;
+      rulerGuide.style.display = 'none';
+      rulerGuide.innerHTML = '';
+      rulerInfo.style.display = 'none';
+    }
+
+    isDrawing = false;
+  }
+
+  function applyToolStyle() {
+    const cfg = toolDefaults[currentTool] || toolDefaults['pencil'];
+    ctx.globalAlpha = cfg.opacity;
+    ctx.globalCompositeOperation = cfg.compositeOp;
+    ctx.strokeStyle = currentColor;
+    ctx.fillStyle = currentColor;
+    ctx.lineWidth = currentSize;
+    ctx.lineCap = cfg.cap;
+    ctx.lineJoin = 'round';
+  }
+
+  function updateRulerGuide(pos) {
+    if (!rulerStart) return;
+    const dx = pos.x - rulerStart.x;
+    const dy = pos.y - rulerStart.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    rulerGuide.innerHTML = `
+      <line x1="${rulerStart.x}" y1="${rulerStart.y}" x2="${pos.x}" y2="${pos.y}"
+        stroke="${currentColor}" stroke-width="${currentSize}" stroke-linecap="round"
+        stroke-dasharray="6 4" opacity="0.6"/>
+    `;
+
+    rulerInfo.textContent = `${Math.round(len)}px  ${Math.round(angle)}°`;
+    rulerInfo.style.left = (pos.x + 16) + 'px';
+    rulerInfo.style.top = (pos.y - 24) + 'px';
+  }
+
+  // Canvas events
+  canvas.addEventListener('mousedown', startDraw);
+  canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('mouseup', endDraw);
+  canvas.addEventListener('mouseleave', endDraw);
+  canvas.addEventListener('touchstart', startDraw, { passive: false });
+  canvas.addEventListener('touchmove', draw, { passive: false });
+  canvas.addEventListener('touchend', endDraw);
+
+  // ── Undo ────────────────────────────────────────────────
+  function saveState() {
+    if (undoStack.length >= MAX_UNDO) undoStack.shift();
+    undoStack.push(canvas.toDataURL());
+  }
+
+  function undo() {
+    if (undoStack.length <= 1) return;
+    undoStack.pop(); // remove current
+    const prev = undoStack[undoStack.length - 1];
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+    };
+    img.src = prev;
+  }
+
+  document.getElementById('undoBtn').addEventListener('click', undo);
+
+  // ── Clear ───────────────────────────────────────────────
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    saveState();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  });
+
+  // ── Export PNG ──────────────────────────────────────────
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'drawing.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+
+  // ── Keyboard shortcuts ─────────────────────────────────
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    const key = e.key.toLowerCase();
+    if (key === 'b') selectTool('pencil');
+    else if (key === 'h') selectTool('highlighter');
+    else if (key === 'f') selectTool('felt-pen');
+    else if (key === 'r') selectTool('ruler');
+    else if (key === 'e') selectTool('eraser');
+    else if (key === 'c') {
+      colorPopup.classList.toggle('open');
+    }
+    else if (key === 'z' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      undo();
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

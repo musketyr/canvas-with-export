@@ -734,9 +734,28 @@
   let wheelHue = 0, wheelSat = 0, wheelBrightness = 100;
   let isDraggingWheel = false;
 
-  const STORAGE_KEY = 'drawingApp_canvas';
-  const DRAWINGS_KEY = 'drawingApp_drawings';
-  const ACTIVE_KEY = 'drawingApp_activeId';
+  const STORAGE_KEY = 'drawAPicture_canvas';
+  const DRAWINGS_KEY = 'drawAPicture_drawings';
+  const ACTIVE_KEY = 'drawAPicture_activeId';
+
+  // Migrate old localStorage keys to new names
+  (function migrateKeys() {
+    const oldDrawings = localStorage.getItem('drawingApp_drawings');
+    const oldActive = localStorage.getItem('drawingApp_activeId');
+    const oldCanvas = localStorage.getItem('drawingApp_canvas');
+    if (oldDrawings && !localStorage.getItem(DRAWINGS_KEY)) {
+      localStorage.setItem(DRAWINGS_KEY, oldDrawings);
+      localStorage.removeItem('drawingApp_drawings');
+    }
+    if (oldActive && !localStorage.getItem(ACTIVE_KEY)) {
+      localStorage.setItem(ACTIVE_KEY, oldActive);
+      localStorage.removeItem('drawingApp_activeId');
+    }
+    if (oldCanvas && !localStorage.getItem(STORAGE_KEY)) {
+      localStorage.setItem(STORAGE_KEY, oldCanvas);
+      localStorage.removeItem('drawingApp_canvas');
+    }
+  })();
   let autoSaveTimer = null;
   let activeDrawingId = null;
 

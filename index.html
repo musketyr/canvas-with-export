@@ -294,6 +294,157 @@
     /* Hidden file input */
     #imageUploadInput { display: none; }
 
+    /* ── Drawings panel ────────────────────────────────────── */
+    .drawings-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.5);
+      z-index: 2000;
+    }
+    .drawings-overlay.open { display: block; }
+
+    .drawings-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 320px;
+      max-width: 90vw;
+      height: 100vh;
+      background: #16213e;
+      border-left: 1px solid #0f3460;
+      z-index: 2001;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform .25s ease;
+    }
+    .drawings-overlay.open .drawings-panel { transform: translateX(0); }
+
+    .drawings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid #0f3460;
+    }
+    .drawings-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #eee;
+    }
+    .drawings-close {
+      background: none;
+      border: none;
+      color: #aaa;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .drawings-close:hover { color: #fff; background: #0f3460; }
+
+    .drawings-actions {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #0f3460;
+    }
+    .drawings-actions button {
+      flex: 1;
+      padding: 8px 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-new-drawing {
+      background: #e94560;
+      color: #fff;
+    }
+    .btn-new-drawing:hover { background: #c73650; }
+    .btn-save-drawing {
+      background: #0f3460;
+      color: #fff;
+    }
+    .btn-save-drawing:hover { background: #1a4a7a; }
+
+    .drawings-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+    }
+    .drawings-list::-webkit-scrollbar { width: 6px; }
+    .drawings-list::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+
+    .drawing-empty {
+      color: #667;
+      font-size: 13px;
+      text-align: center;
+      padding: 32px 0;
+    }
+
+    .drawing-card {
+      background: #1a1a2e;
+      border: 2px solid transparent;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .drawing-card:hover { border-color: #0f3460; }
+    .drawing-card.active { border-color: #e94560; }
+
+    .drawing-thumb {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      display: block;
+      background: #fff;
+    }
+
+    .drawing-card-info {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+    }
+    .drawing-card-name {
+      font-size: 13px;
+      color: #ccc;
+      background: none;
+      border: none;
+      outline: none;
+      width: 100%;
+      cursor: text;
+      font-family: inherit;
+    }
+    .drawing-card-name:focus {
+      color: #fff;
+      border-bottom: 1px solid #e94560;
+    }
+    .drawing-card-date {
+      font-size: 10px;
+      color: #667;
+      white-space: nowrap;
+      margin-left: 8px;
+    }
+    .drawing-card-delete {
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-left: 4px;
+    }
+    .drawing-card-delete:hover { color: #e94560; background: rgba(233,69,96,.1); }
+
     /* ── Responsive ─────────────────────────────────────────── */
     @media (max-width: 800px) {
       .toolbar { gap: 6px; padding: 6px 8px; }
@@ -432,6 +583,12 @@
 
   <!-- Actions -->
   <div class="tool-group">
+    <button class="action-btn secondary" id="drawingsBtn" title="My Drawings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>
+      </svg>
+      Drawings
+    </button>
     <button class="action-btn secondary" id="uploadBtn" title="Upload Image">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
@@ -462,6 +619,21 @@
 
 <!-- Hidden file input for image upload -->
 <input type="file" id="imageUploadInput" accept="image/*">
+
+<!-- ── Drawings management panel ───────────────────────────── -->
+<div class="drawings-overlay" id="drawingsOverlay">
+  <div class="drawings-panel" id="drawingsPanel">
+    <div class="drawings-header">
+      <h2>My Drawings</h2>
+      <button class="drawings-close" id="drawingsClose">&times;</button>
+    </div>
+    <div class="drawings-actions">
+      <button class="btn-new-drawing" id="newDrawingBtn">+ New Drawing</button>
+      <button class="btn-save-drawing" id="saveDrawingBtn">Save Current</button>
+    </div>
+    <div class="drawings-list" id="drawingsList"></div>
+  </div>
+</div>
 
 <!-- ── Canvas ───────────────────────────────────────────────── -->
 <div class="canvas-wrapper" id="canvasWrapper">
@@ -515,7 +687,10 @@
   let isDraggingWheel = false;
 
   const STORAGE_KEY = 'drawingApp_canvas';
+  const DRAWINGS_KEY = 'drawingApp_drawings';
+  const ACTIVE_KEY = 'drawingApp_activeId';
   let autoSaveTimer = null;
+  let activeDrawingId = null;
 
   // ── Preset color palette ────────────────────────────────
   const PRESET_COLORS = [
@@ -592,25 +767,56 @@
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
+  // ── Drawings storage helpers ─────────────────────────────
+  function getDrawingsList() {
+    try { return JSON.parse(localStorage.getItem(DRAWINGS_KEY)) || []; }
+    catch { return []; }
+  }
+  function setDrawingsList(list) {
+    try { localStorage.setItem(DRAWINGS_KEY, JSON.stringify(list)); } catch {}
+  }
+
   // ── Load saved drawing from localStorage ────────────────
   function loadFromStorage() {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const img = new Image();
-        img.onload = () => {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-          saveState();
-        };
-        img.src = saved;
+      // Migrate: if old single-key data exists, import it
+      const legacy = localStorage.getItem(STORAGE_KEY);
+      const list = getDrawingsList();
+      const savedId = localStorage.getItem(ACTIVE_KEY);
+
+      if (list.length === 0 && legacy) {
+        // Migrate legacy single save into drawings list
+        const entry = { id: Date.now().toString(), name: 'Untitled', data: legacy, date: new Date().toISOString() };
+        setDrawingsList([entry]);
+        activeDrawingId = entry.id;
+        localStorage.setItem(ACTIVE_KEY, activeDrawingId);
+        localStorage.removeItem(STORAGE_KEY);
+        loadImageData(legacy);
         return;
       }
-    } catch (e) { /* storage unavailable */ }
+
+      if (list.length > 0) {
+        const target = list.find(d => d.id === savedId) || list[0];
+        activeDrawingId = target.id;
+        localStorage.setItem(ACTIVE_KEY, activeDrawingId);
+        if (target.data) { loadImageData(target.data); return; }
+      }
+    } catch {}
     saveState();
   }
+
+  function loadImageData(dataUrl) {
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      saveState();
+    };
+    img.src = dataUrl;
+  }
+
   loadFromStorage();
 
   // ── Auto-save to localStorage (debounced) ───────────────
@@ -618,11 +824,226 @@
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, canvas.toDataURL('image/png'));
+        const dataUrl = canvas.toDataURL('image/png');
+        const list = getDrawingsList();
+        if (activeDrawingId) {
+          const entry = list.find(d => d.id === activeDrawingId);
+          if (entry) {
+            entry.data = dataUrl;
+            entry.date = new Date().toISOString();
+            setDrawingsList(list);
+          }
+        } else {
+          // Auto-create first drawing entry
+          const entry = { id: Date.now().toString(), name: 'Untitled', data: dataUrl, date: new Date().toISOString() };
+          list.unshift(entry);
+          activeDrawingId = entry.id;
+          localStorage.setItem(ACTIVE_KEY, activeDrawingId);
+          setDrawingsList(list);
+        }
         saveIndicator.classList.add('show');
         setTimeout(() => saveIndicator.classList.remove('show'), 1200);
-      } catch (e) { /* quota exceeded or unavailable */ }
+      } catch {}
     }, 500);
+  }
+
+  // ── Drawings panel logic ────────────────────────────────
+  const drawingsOverlay = document.getElementById('drawingsOverlay');
+  const drawingsList = document.getElementById('drawingsList');
+
+  function openDrawingsPanel() {
+    drawingsOverlay.classList.add('open');
+    renderDrawingsList();
+  }
+  function closeDrawingsPanel() {
+    drawingsOverlay.classList.remove('open');
+  }
+
+  document.getElementById('drawingsBtn').addEventListener('click', openDrawingsPanel);
+  document.getElementById('drawingsClose').addEventListener('click', closeDrawingsPanel);
+  drawingsOverlay.addEventListener('click', (e) => {
+    if (e.target === drawingsOverlay) closeDrawingsPanel();
+  });
+
+  // New drawing
+  document.getElementById('newDrawingBtn').addEventListener('click', () => {
+    // Auto-save current first
+    if (activeDrawingId) {
+      const list = getDrawingsList();
+      const entry = list.find(d => d.id === activeDrawingId);
+      if (entry) {
+        entry.data = canvas.toDataURL('image/png');
+        entry.date = new Date().toISOString();
+        setDrawingsList(list);
+      }
+    }
+    // Create new blank drawing
+    const newEntry = {
+      id: Date.now().toString(),
+      name: 'Untitled',
+      data: null,
+      date: new Date().toISOString()
+    };
+    const list = getDrawingsList();
+    list.unshift(newEntry);
+    setDrawingsList(list);
+    activeDrawingId = newEntry.id;
+    localStorage.setItem(ACTIVE_KEY, activeDrawingId);
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    undoStack.length = 0;
+    saveState();
+
+    renderDrawingsList();
+  });
+
+  // Save current (force-save snapshot)
+  document.getElementById('saveDrawingBtn').addEventListener('click', () => {
+    const dataUrl = canvas.toDataURL('image/png');
+    const list = getDrawingsList();
+
+    if (!activeDrawingId) {
+      // No active drawing yet, create one
+      const entry = { id: Date.now().toString(), name: 'Untitled', data: dataUrl, date: new Date().toISOString() };
+      list.unshift(entry);
+      activeDrawingId = entry.id;
+      localStorage.setItem(ACTIVE_KEY, activeDrawingId);
+    } else {
+      const entry = list.find(d => d.id === activeDrawingId);
+      if (entry) {
+        entry.data = dataUrl;
+        entry.date = new Date().toISOString();
+      }
+    }
+    setDrawingsList(list);
+    saveIndicator.classList.add('show');
+    setTimeout(() => saveIndicator.classList.remove('show'), 1200);
+    renderDrawingsList();
+  });
+
+  function renderDrawingsList() {
+    const list = getDrawingsList();
+    drawingsList.innerHTML = '';
+
+    if (list.length === 0) {
+      drawingsList.innerHTML = '<div class="drawing-empty">No saved drawings yet.<br>Click "Save Current" to save your work.</div>';
+      return;
+    }
+
+    list.forEach(entry => {
+      const card = document.createElement('div');
+      card.className = 'drawing-card' + (entry.id === activeDrawingId ? ' active' : '');
+
+      const thumb = document.createElement('img');
+      thumb.className = 'drawing-thumb';
+      thumb.src = entry.data || 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
+      thumb.alt = entry.name;
+      thumb.addEventListener('click', () => loadDrawing(entry.id));
+      card.appendChild(thumb);
+
+      const info = document.createElement('div');
+      info.className = 'drawing-card-info';
+
+      const nameInput = document.createElement('input');
+      nameInput.className = 'drawing-card-name';
+      nameInput.type = 'text';
+      nameInput.value = entry.name;
+      nameInput.addEventListener('change', () => renameDrawing(entry.id, nameInput.value));
+      nameInput.addEventListener('click', (e) => e.stopPropagation());
+      info.appendChild(nameInput);
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'drawing-card-date';
+      dateSpan.textContent = formatDate(entry.date);
+      info.appendChild(dateSpan);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'drawing-card-delete';
+      delBtn.innerHTML = '&times;';
+      delBtn.title = 'Delete';
+      delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteDrawing(entry.id); });
+      info.appendChild(delBtn);
+
+      card.appendChild(info);
+      drawingsList.appendChild(card);
+    });
+  }
+
+  function loadDrawing(id) {
+    // Save current first
+    if (activeDrawingId) {
+      const list = getDrawingsList();
+      const cur = list.find(d => d.id === activeDrawingId);
+      if (cur) {
+        cur.data = canvas.toDataURL('image/png');
+        cur.date = new Date().toISOString();
+        setDrawingsList(list);
+      }
+    }
+
+    const list = getDrawingsList();
+    const entry = list.find(d => d.id === id);
+    if (!entry) return;
+
+    activeDrawingId = id;
+    localStorage.setItem(ACTIVE_KEY, activeDrawingId);
+    undoStack.length = 0;
+
+    if (entry.data) {
+      loadImageData(entry.data);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      saveState();
+    }
+
+    renderDrawingsList();
+  }
+
+  function renameDrawing(id, newName) {
+    const list = getDrawingsList();
+    const entry = list.find(d => d.id === id);
+    if (entry) {
+      entry.name = newName.trim() || 'Untitled';
+      setDrawingsList(list);
+    }
+  }
+
+  function deleteDrawing(id) {
+    let list = getDrawingsList();
+    list = list.filter(d => d.id !== id);
+    setDrawingsList(list);
+
+    if (id === activeDrawingId) {
+      if (list.length > 0) {
+        loadDrawing(list[0].id);
+      } else {
+        activeDrawingId = null;
+        localStorage.removeItem(ACTIVE_KEY);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        undoStack.length = 0;
+        saveState();
+      }
+    }
+
+    renderDrawingsList();
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+    return d.toLocaleDateString();
   }
 
   // ── Tool selection ──────────────────────────────────────

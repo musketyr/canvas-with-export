@@ -294,6 +294,54 @@
     /* Hidden file input */
     #imageUploadInput { display: none; }
 
+    /* ── Image placement overlay ───────────────────────────── */
+    .image-placer {
+      position: absolute;
+      z-index: 8;
+      cursor: grab;
+      border: 2px dashed #e94560;
+      box-shadow: 0 0 0 4000px rgba(0,0,0,.2);
+    }
+    .image-placer:active { cursor: grabbing; }
+    .image-placer img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .image-placer-bar {
+      position: absolute;
+      bottom: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .image-placer-bar button {
+      padding: 6px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .placer-confirm { background: #e94560; color: #fff; }
+    .placer-confirm:hover { background: #c73650; }
+    .placer-cancel { background: #0f3460; color: #fff; }
+    .placer-cancel:hover { background: #1a4a7a; }
+    .image-placer .resize-handle {
+      position: absolute;
+      bottom: -6px;
+      right: -6px;
+      width: 14px;
+      height: 14px;
+      background: #e94560;
+      border: 2px solid #fff;
+      border-radius: 3px;
+      cursor: nwse-resize;
+    }
+
     /* ── Drawings panel ────────────────────────────────────── */
     .drawings-overlay {
       display: none;
@@ -1503,7 +1551,12 @@
     scheduleAutoSave();
   });
 
-  // ── Image upload ────────────────────────────────────────
+  // ── Image upload with draggable placement ──────────────
+  let placerEl = null;
+  let placerImg = null;
+  let placerDrag = null;
+  let placerResize = null;
+
   document.getElementById('uploadBtn').addEventListener('click', () => {
     imageUploadInput.click();
   });
@@ -1515,23 +1568,137 @@
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
-      img.onload = () => {
-        saveState();
-        // Scale image to fit canvas while maintaining aspect ratio
-        const scale = Math.min(canvas.width / img.width, canvas.height / img.height, 1);
-        const w = img.width * scale;
-        const h = img.height * scale;
-        const x = (canvas.width - w) / 2;
-        const y = (canvas.height - h) / 2;
-        ctx.drawImage(img, x, y, w, h);
-        scheduleAutoSave();
-      };
+      img.onload = () => showImagePlacer(img, ev.target.result);
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
-    // Reset so same file can be uploaded again
     imageUploadInput.value = '';
   });
+
+  function showImagePlacer(img, src) {
+    // Remove any existing placer
+    removeImagePlacer();
+
+    const scale = Math.min(canvas.width / img.width, canvas.height / img.height, 1) * 0.8;
+    let w = img.width * scale;
+    let h = img.height * scale;
+    let x = (canvas.width - w) / 2;
+    let y = (canvas.height - h) / 2;
+    const aspect = img.width / img.height;
+
+    placerEl = document.createElement('div');
+    placerEl.className = 'image-placer';
+    placerEl.style.left = x + 'px';
+    placerEl.style.top = y + 'px';
+    placerEl.style.width = w + 'px';
+    placerEl.style.height = h + 'px';
+
+    const imgEl = document.createElement('img');
+    imgEl.src = src;
+    placerEl.appendChild(imgEl);
+    placerImg = img;
+
+    // Resize handle
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    placerEl.appendChild(handle);
+
+    // Buttons bar
+    const bar = document.createElement('div');
+    bar.className = 'image-placer-bar';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'placer-confirm';
+    confirmBtn.textContent = 'Place (Enter)';
+    confirmBtn.addEventListener('click', commitImagePlacer);
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'placer-cancel';
+    cancelBtn.textContent = 'Cancel (Esc)';
+    cancelBtn.addEventListener('click', removeImagePlacer);
+    bar.appendChild(confirmBtn);
+    bar.appendChild(cancelBtn);
+    placerEl.appendChild(bar);
+
+    wrapper.appendChild(placerEl);
+
+    // Drag to move
+    placerEl.addEventListener('mousedown', (e) => {
+      if (e.target === handle) return;
+      if (e.target.tagName === 'BUTTON') return;
+      e.preventDefault();
+      placerDrag = { startX: e.clientX, startY: e.clientY, origX: parseFloat(placerEl.style.left), origY: parseFloat(placerEl.style.top) };
+    });
+    placerEl.addEventListener('touchstart', (e) => {
+      if (e.target === handle) return;
+      if (e.target.tagName === 'BUTTON') return;
+      e.preventDefault();
+      const t = e.touches[0];
+      placerDrag = { startX: t.clientX, startY: t.clientY, origX: parseFloat(placerEl.style.left), origY: parseFloat(placerEl.style.top) };
+    }, { passive: false });
+
+    // Resize handle
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      placerResize = { startX: e.clientX, startY: e.clientY, origW: parseFloat(placerEl.style.width), origH: parseFloat(placerEl.style.height) };
+    });
+    handle.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const t = e.touches[0];
+      placerResize = { startX: t.clientX, startY: t.clientY, origW: parseFloat(placerEl.style.width), origH: parseFloat(placerEl.style.height) };
+    }, { passive: false });
+
+    function onMove(e) {
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      if (placerResize) {
+        const dw = cx - placerResize.startX;
+        const newW = Math.max(40, placerResize.origW + dw);
+        placerEl.style.width = newW + 'px';
+        placerEl.style.height = (newW / aspect) + 'px';
+      } else if (placerDrag) {
+        placerEl.style.left = (placerDrag.origX + cx - placerDrag.startX) + 'px';
+        placerEl.style.top = (placerDrag.origY + cy - placerDrag.startY) + 'px';
+      }
+    }
+    function onUp() { placerDrag = null; placerResize = null; }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+
+    // Store cleanup refs
+    placerEl._cleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+  }
+
+  function commitImagePlacer() {
+    if (!placerEl || !placerImg) return;
+    saveState();
+    const px = parseFloat(placerEl.style.left);
+    const py = parseFloat(placerEl.style.top);
+    const pw = parseFloat(placerEl.style.width);
+    const ph = parseFloat(placerEl.style.height);
+    ctx.drawImage(placerImg, px, py, pw, ph);
+    removeImagePlacer();
+    scheduleAutoSave();
+  }
+
+  function removeImagePlacer() {
+    if (placerEl) {
+      if (placerEl._cleanup) placerEl._cleanup();
+      placerEl.remove();
+      placerEl = null;
+      placerImg = null;
+      placerDrag = null;
+      placerResize = null;
+    }
+  }
 
   // ── Export PNG ──────────────────────────────────────────
   document.getElementById('exportBtn').addEventListener('click', () => {
@@ -1544,19 +1711,28 @@
   // ── Keyboard shortcuts ─────────────────────────────────
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT') return;
-    const key = e.key.toLowerCase();
-    if (key === 'b') selectTool('pencil');
-    else if (key === 'h') selectTool('highlighter');
-    else if (key === 'f') selectTool('felt-pen');
-    else if (key === 'l') selectTool('shape-line');
-    else if (key === 'u') selectTool('shape-rect');
-    else if (key === 'o') selectTool('shape-circle');
-    else if (key === 't') selectTool('shape-triangle');
-    else if (key === 'r') selectTool('ruler');
-    else if (key === 'g') selectTool('bucket');
-    else if (key === 'e') selectTool('eraser');
-    else if (key === 'c') colorPopup.classList.toggle('open');
-    else if (key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
+    const key = e.key;
+
+    // Image placer keys
+    if (placerEl) {
+      if (key === 'Enter') { e.preventDefault(); commitImagePlacer(); return; }
+      if (key === 'Escape') { e.preventDefault(); removeImagePlacer(); return; }
+      return; // Block other shortcuts while placing
+    }
+
+    const k = key.toLowerCase();
+    if (k === 'b') selectTool('pencil');
+    else if (k === 'h') selectTool('highlighter');
+    else if (k === 'f') selectTool('felt-pen');
+    else if (k === 'l') selectTool('shape-line');
+    else if (k === 'u') selectTool('shape-rect');
+    else if (k === 'o') selectTool('shape-circle');
+    else if (k === 't') selectTool('shape-triangle');
+    else if (k === 'r') selectTool('ruler');
+    else if (k === 'g') selectTool('bucket');
+    else if (k === 'e') selectTool('eraser');
+    else if (k === 'c') colorPopup.classList.toggle('open');
+    else if (k === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
   });
 })();
 </script>
